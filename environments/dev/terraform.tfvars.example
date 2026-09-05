@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars and adjust. Every value here has a default in
+# variables.tf that matches this file - you don't strictly need a
+# terraform.tfvars at all unless you're overriding something.
+
+region       = "eu-central-1"
+environment  = "dev"
+project_name = "shopstream"
+azs          = ["eu-central-1a", "eu-central-1b"]
+vpc_cidr_block = "10.0.0.0/16"

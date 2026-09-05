@@ -1,0 +1,13 @@
+# Copy to backend.hcl (gitignored - it's not secret, but it's specific to
+# whichever bootstrap apply created these, and shouldn't drift from
+# what's actually in bootstrap/'s state) and fill in with the exact
+# bucket/table names bootstrap/ actually created:
+#
+#   terraform -chdir=bootstrap output
+#
+# Then:
+#   terraform init -backend-config=environments/dev/backend.hcl
+
+bucket         = "REPLACE_WITH_BOOTSTRAP_BUCKET_NAME"
+region         = "eu-central-1"
+dynamodb_table = "REPLACE_WITH_BOOTSTRAP_TABLE_NAME"
