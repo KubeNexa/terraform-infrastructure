@@ -36,6 +36,14 @@ resource "postgresql_database" "this" {
   owner = postgresql_role.this[each.key].name
 }
 
+# Closes the gap dev's version of this file explicitly left open:
+# Postgres grants CONNECT on every database to PUBLIC (every role) by
+# default, so without this, order-service's credentials could *attempt*
+# to authenticate against shopstream_users even though nothing in the
+# application ever tells it that database's name. Setting privileges to
+# an empty list here makes the provider revoke whatever PUBLIC currently
+# has - it does not affect each database's actual owning role, which
+# already has full rights via ownership, independent of PUBLIC's grant.
 resource "postgresql_grant" "revoke_public_connect" {
   for_each = local.service_databases
 

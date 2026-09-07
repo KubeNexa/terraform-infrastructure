@@ -29,19 +29,16 @@ resource "aws_eks_cluster" "this" {
     subnet_ids              = concat(var.private_subnet_ids, var.public_subnet_ids)
     endpoint_private_access = true
     endpoint_public_access  = true
-    # Public access is left open (0.0.0.0/0 default) rather than
-    # restricted to specific CIDRs - fine for a learning/portfolio
-    # cluster reached from a laptop with a changing IP; a real production
-    # cluster would restrict `endpoint_public_access_cidrs` to known
-    # office/VPN ranges, or disable public access entirely and require a
-    # bastion/VPN into the VPC.
+    public_access_cidrs     = var.endpoint_public_access_cidrs
+    # Defaults to 0.0.0.0/0 (see variables.tf) - fine for a learning/
+    # portfolio cluster reached from a laptop with a changing IP.
+    # environments/prod overrides this with real, specific CIDRs.
   }
 
-  # Control-plane logging: off by default (costs money per log type
-  # shipped to CloudWatch, and irrelevant until you're actually
-  # debugging cluster-level auth/scheduling issues). Uncomment what you
-  # need when you need it rather than paying for logs no one reads:
-  # enabled_cluster_log_types = ["api", "audit", "authenticator"]
+  # Empty by default (see variables.tf) - each log type has an ongoing
+  # CloudWatch cost, not worth paying for logs no one reads on a
+  # practice cluster. environments/prod turns api/audit/authenticator on.
+  enabled_cluster_log_types = var.enabled_cluster_log_types
 
   depends_on = [aws_iam_role_policy_attachment.cluster_policy]
 

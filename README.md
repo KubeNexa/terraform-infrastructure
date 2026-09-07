@@ -19,10 +19,13 @@ terraform-infrastructure/
 │   ├── docdb/               DocumentDB cluster for notification-service
 │   └── ecr/                One repository per service (7 total)
 └── environments/
-    └── dev/                Composes the modules above into one
-                            environment. A second environments/prod/
-                            would reuse the same modules with different
-                            variable values, not duplicate the modules.
+    ├── dev/                Composes the modules above into a practice
+    │                       environment - cheap and easy to tear down.
+    └── prod/               Same modules, production-shaped variable
+                            values (Multi-AZ, deletion protection,
+                            restricted EKS endpoint, audit logging).
+                            No module is duplicated between the two -
+                            only environments/*/main.tf differs.
 ```
 
 ## Order of operations
@@ -60,6 +63,30 @@ creation alone is typically 10+ minutes.
 
 ```bash
 terraform output configure_kubectl   # prints the exact aws eks command
+```
+
+## Deploying prod, once dev exists
+
+Same steps, `environments/prod` instead of `environments/dev`, with two
+differences:
+
+- **`admin_cidrs` has no default and must be set** in
+  `terraform.tfvars` before `plan`/`apply` will proceed - there's no
+  safe default for "who can reach my production Kubernetes API server."
+- **No ECR repos get created again.** `prod` deliberately has no
+  `module "ecr"` - repository names are global per AWS account/region,
+  and `dev` already owns them. Both environments share one image
+  registry; images are built once and promoted by tag, not rebuilt per
+  environment. Run `terraform -chdir=../dev output ecr_repository_urls`
+  from within `prod/` if you need those values.
+
+```bash
+cd environments/prod
+cp backend.hcl.example backend.hcl        # same bucket/table as dev, different state key
+cp terraform.tfvars.example terraform.tfvars   # fill in admin_cidrs
+terraform init -backend-config=backend.hcl
+terraform plan
+terraform apply
 ```
 
 ## What this does NOT include, on purpose
@@ -121,19 +148,49 @@ running idle. `var.node_capacity_type = "SPOT"` and turning DocumentDB's
 `instance_count` down don't change the DocumentDB tier issue, but they do
 meaningfully cut the EKS node cost.
 
+`prod`'s HA settings roughly **add** the following on top of the table
+above, rather than replacing it: Multi-AZ RDS (~+$13/mo, doubling that
+line), a second DocumentDB instance (~+$170/mo — the single biggest
+incremental cost in the whole file), and per-AZ NAT Gateways instead of
+one shared one (~+$33/mo for a 2-AZ VPC). Roughly **~$570/month** total
+for `prod` at its defaults, before data transfer/storage.
+
 ## Known simplifications, stated rather than hidden
 
-- **Postgres's `PUBLIC` role retains default `CONNECT` privilege on every
-  database** on the shared RDS instance — see the comment in
-  `environments/dev/databases.tf`. No application code is ever given
-  another service's database name/credentials, so this isn't reachable
-  through the app, but it's not the same as a hard database-level
-  guarantee. Revoking `CONNECT FROM PUBLIC` per database is the stricter
-  version, deliberately left undone here.
-- **EKS API server's public endpoint is open to `0.0.0.0/0`** rather than
-  restricted to specific CIDRs — practical for a cluster reached from a
-  laptop with a changing IP, not what a real production cluster would do.
+Resolved in **both** environments (not just `prod`) — these were
+correctness fixes with no reason to leave `dev` worse than necessary:
+- **Postgres's `PUBLIC` role no longer retains `CONNECT`** on any of the
+  four service databases — explicitly revoked in `databases.tf` in both
+  environments. Doesn't change any legitimate connection (each database's
+  owning role already had full rights via ownership, independent of
+  `PUBLIC`'s separate grant) — only removes the thing that let a role
+  *attempt* a connection to a database it was never given credentials for.
+- **The EKS endpoint's allowed CIDRs and control-plane log types are now
+  real variables** (`modules/eks`), not hardcoded. `dev` still defaults
+  to `0.0.0.0/0` / no logging (cheap, practical for a laptop with a
+  changing IP); `prod` requires real CIDRs and turns on
+  api/audit/authenticator logging.
+
+Still `dev`-only, deliberately:
 - **`deletion_protection = false` and `skip_final_snapshot = true`** on
-  both databases, specifically so a portfolio/practice environment can be
-  torn down with a plain `terraform destroy` — flip both before this ever
-  holds data you can't afford to lose.
+  both databases in `dev` (both `true`/`false` respectively in `prod`) -
+  specifically so a portfolio/practice environment can be torn down with
+  a plain `terraform destroy`.
+- **`single_nat_gateway = true`** in `dev` (one shared NAT Gateway across
+  all AZs - cheaper, but a single point of failure for outbound internet
+  from every private subnet). `prod` uses one NAT Gateway per AZ.
+- **`multi_az = false`** on `dev`'s RDS instance and `instance_count = 1`
+  on its DocumentDB cluster — no automatic failover target on either.
+  Both are the opposite in `prod`.
+
+Still open in **both** environments:
+- **ECR repos are owned by `dev`'s state**, not split into their own
+  environment-agnostic state. Functionally fine (both environments
+  already share the same registry, which is correct), but it's an
+  organizational quirk worth cleaning up eventually — `prod`'s Terraform
+  state currently has zero reason to know or care about `dev`'s state,
+  except that this one thing lives there.
+- **No secret rotation** configured on any of the Secrets Manager entries
+  either environment creates — generated once, never rotated.
+- **No bastion module**, so the `postgresql` provider's network-access
+  wrinkle (see above) is still a manual step in both environments.

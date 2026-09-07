@@ -1,0 +1,13 @@
+# Copy to backend.hcl (gitignored). Same bucket/table as dev's
+# backend.hcl - only the state key differs (set in versions.tf, not
+# here) - see versions.tf's comment on why a fully separate bucket/
+# account would be the stricter version of this.
+#
+#   terraform -chdir=../../bootstrap output
+#
+# Then:
+#   terraform init -backend-config=backend.hcl
+
+bucket         = "REPLACE_WITH_BOOTSTRAP_BUCKET_NAME"
+region         = "eu-central-1"
+dynamodb_table = "REPLACE_WITH_BOOTSTRAP_TABLE_NAME"

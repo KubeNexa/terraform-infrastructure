@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and adjust. Unlike dev, admin_cidrs has no
+# default at all - you MUST set this before `plan`/`apply` will proceed
+# (see variables.tf for why: there's no safe default for "who can reach
+# my production Kubernetes API server").
+
+region       = "eu-central-1"
+environment  = "prod"
+project_name = "shopstream"
+azs          = ["eu-central-1a", "eu-central-1b"]
+vpc_cidr_block = "10.0.0.0/16"
+
+# Replace with your actual office/VPN/admin IP ranges - NOT 0.0.0.0/0.
+# Find your current public IP with: curl -s ifconfig.me
+admin_cidrs = ["REPLACE_WITH_YOUR_IP/32"]
